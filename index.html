@@ -67,8 +67,13 @@
         .privacy-panel { margin: 12px 20px 0; padding: 16px; border: 1px solid rgba(251, 191, 36, .45); border-radius: 16px; background: rgba(120, 53, 15, .18); line-height: 1.6; }
         .privacy-panel strong { display: block; color: #fde68a; margin-bottom: 6px; }
         .privacy-panel p, .privacy-panel small { color: #cbd5e1; font-size: 12px; }
-        .privacy-panel .form-input { margin: 12px 0; }
         .privacy-panel .btn { font-size: 14px; padding: 14px; }
+        #screen-private { overflow-y: auto; }
+        .private-body { width: 100%; max-width: 440px; margin: 0 auto; padding: 28px 20px 40px; line-height: 1.7; }
+        .private-body p { color: #cbd5e1; font-size: 13px; margin-bottom: 22px; }
+        .private-body .btn { margin-top: 22px; }
+        .private-body small { display: block; color: #94a3b8; margin-top: 12px; }
+        .form-input option { color: #0f172a; }
         
         #screen-analyzing { align-items: center; justify-content: center; gap: 32px; padding: 40px; text-align: center; }
         .analyzing-wrap { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
@@ -85,6 +90,7 @@
         
         #screen-form { overflow-y: auto; }
         .form-photo-preview { width: 100%; max-height: 200px; object-fit: cover; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+        .form-photo-preview.illustration { max-height: 280px; object-fit: contain; background: #0f172a; }
         .form-body { padding: 20px 20px 40px; }
         .ai-badge { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1)); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 24px; padding: 6px 16px; font-size: 12px; color: #818cf8; margin-bottom: 22px; font-weight: 600; }
         
@@ -115,7 +121,14 @@
         .list-table td.td-item { font-weight: 700; color: #f1f5f9; }
         .list-table td.td-thumb { width: 52px; padding: 6px 8px; }
         .list-table td.td-thumb img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
+        .photo-thumb-btn { display: block; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: zoom-in; }
+        .photo-thumb-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; border-radius: 8px; }
         .list-table td.td-thumb .no-img { width: 44px; height: 44px; border-radius: 8px; background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #1e3a5f; }
+        .photo-modal { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.94); align-items: center; justify-content: center; flex-direction: column; padding: 58px 12px 24px; }
+        .photo-modal.open { display: flex; }
+        .photo-modal img { display: block; max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: 8px; }
+        .photo-modal-title { color: #e2e8f0; margin-top: 12px; text-align: center; font-size: 14px; }
+        .photo-modal-close { position: absolute; top: 14px; right: 16px; border: 0; border-radius: 10px; background: #334155; color: white; font-size: 20px; min-width: 44px; min-height: 44px; cursor: pointer; }
         
         .td-notes { max-width: 160px; font-size: 11px; white-space: normal !important; line-height: 1.4; color: #94a3b8; }
 
@@ -171,6 +184,7 @@
         </div>
         <div class="home-buttons">
             <button class="btn btn-primary btn-lg" onclick="openCamera()">📷 &nbsp;撮影して登録</button>
+            <button class="btn btn-secondary" onclick="openPrivateEntry()">🪪 &nbsp;身分証などを写真なしで登録</button>
             <button class="btn btn-secondary" onclick="showList()">📋 &nbsp;登録一覧を見る</button>
             <button class="btn btn-secondary" onclick="showScreen('setup')" style="font-size:13px; padding:12px;">⚙️ URL設定を変更</button>
         </div>
@@ -182,14 +196,41 @@
         <img id="preview-img" src="" alt="撮影した画像">
         <div class="privacy-panel">
             <strong>🔒 免許証・身分証など、個人情報が写る場合</strong>
-            <p>こちらを選ぶと写真全体を強くぼかしてから送信します。AI解析は行わず、品名は手入力します。</p>
-            <input type="text" id="privacy-surname" class="form-input" maxlength="20" autocomplete="off" placeholder="苗字だけ入力（例：田中／不明なら空欄）" aria-label="持ち主の苗字">
-            <button class="btn btn-secondary" id="privacy-btn" onclick="preparePrivateEntry()">🔒 全体をぼかして登録へ</button>
-            <small>苗字を入力すると、備考に「田中様」の形で入ります。元画像はAIやDriveに送信しません。</small>
+            <p>この写真を破棄し、品物の種類を表すイラストで登録します。AI解析は行いません。</p>
+            <button class="btn btn-secondary" onclick="openPrivateEntry()">🪪 写真を破棄してイラスト登録へ</button>
+            <small>元写真はAIやDriveに送信しません。</small>
         </div>
         <div class="preview-actions">
             <button class="btn btn-secondary" onclick="showScreen('home')">✕ やり直す</button>
             <button class="btn btn-primary" onclick="startAnalysis()">個人情報なし・AI解析へ</button>
+        </div>
+    </div>
+
+    <div id="screen-private" class="screen">
+        <div class="app-header">
+            <button class="back-btn" onclick="showScreen('home')">←</button>
+            <h1>写真なしで登録</h1>
+        </div>
+        <div class="private-body">
+            <p>免許証・マイナンバーカードなどは実物の写真を保存せず、種類を示す架空のイラストで登録します。</p>
+            <div class="form-group">
+                <label class="form-label" for="private-kind">品物の種類</label>
+                <select id="private-kind" class="form-input">
+                    <option>運転免許証</option>
+                    <option>マイナンバーカード</option>
+                    <option>健康保険証</option>
+                    <option>クレジットカード</option>
+                    <option>キャッシュカード</option>
+                    <option>パスポート</option>
+                    <option>その他の身分証</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="private-surname">持ち主の苗字（分かる場合のみ）</label>
+                <input type="text" id="private-surname" class="form-input" maxlength="20" autocomplete="off" placeholder="例：田中">
+            </div>
+            <button class="btn btn-primary" onclick="preparePrivateEntry()">🪪 イラストで内容入力へ</button>
+            <small>苗字は備考に「田中様」の形で入ります。氏名・番号・住所などはイラストに入りません。</small>
         </div>
     </div>
 
@@ -266,6 +307,7 @@
         <div class="app-header">
             <button class="back-btn" onclick="showScreen('home')">←</button>
             <h1>拾得物一覧</h1>
+            <button class="list-filter-btn" style="margin-left:auto" onclick="showList(activePeriod, true)">↻ 更新</button>
         </div>
         
         <div class="list-filter-bar">
@@ -322,6 +364,11 @@
 
     <input type="file" id="camera-input" accept="image/*" capture="environment">
     <div class="toast" id="toast"></div>
+    <div id="photo-modal" class="photo-modal" role="dialog" aria-modal="true" aria-label="写真を拡大" onclick="closePhoto()">
+        <button class="photo-modal-close" aria-label="閉じる" onclick="closePhoto()">✕</button>
+        <img id="photo-modal-img" alt="拾得物の拡大写真" onclick="event.stopPropagation()">
+        <div id="photo-modal-title" class="photo-modal-title"></div>
+    </div>
 
     <script>
         const GAS_URL_KEY = 'gasApiUrl';
@@ -370,79 +417,91 @@
                 state.surname = '';
                 state.base64 = dataUrl.split(',')[1];
                 state.mime = 'image/jpeg';
-                document.getElementById('privacy-surname').value = '';
                 document.getElementById('preview-img').src = dataUrl;
                 document.getElementById('form-photo').src = dataUrl;
+                document.getElementById('form-photo').classList.remove('illustration');
                 showScreen('preview');
             });
         });
 
-        function preparePrivateEntry() {
-            if (!state.base64 || state.driveFileId) { showToast('⚠️ 写真を撮り直してください'); return; }
-            var btn = document.getElementById('privacy-btn');
-            btn.disabled = true;
-            btn.textContent = '🔒 ぼかし処理中...';
-            var original = 'data:image/jpeg;base64,' + state.base64;
+        function openPrivateEntry() {
+            // 撮影済みでも元画像を破棄してから、写真なしの入力画面に進む。
             state.base64 = null;
-            state.privacyMode = true;
+            state.driveFileId = null;
             state.aiResult = null;
-            state.surname = document.getElementById('privacy-surname').value.trim().replace(/様$/, '').trim();
+            state.surname = '';
+            state.privacyMode = true;
             document.getElementById('preview-img').removeAttribute('src');
             document.getElementById('form-photo').removeAttribute('src');
-            var img = new Image();
-            img.onload = function() {
-                try {
-                    // 最大18ピクセルまで縮小してから拡大し、文字・顔を判読不能にする。
-                    var scale = 18 / Math.max(img.width, img.height);
-                    var tiny = document.createElement('canvas');
-                    tiny.width = Math.max(1, Math.round(img.width * scale));
-                    tiny.height = Math.max(1, Math.round(img.height * scale));
-                    tiny.getContext('2d').drawImage(img, 0, 0, tiny.width, tiny.height);
-                    var blurred = document.createElement('canvas');
-                    blurred.width = img.width;
-                    blurred.height = img.height;
-                    var ctx = blurred.getContext('2d');
-                    ctx.imageSmoothingEnabled = true;
-                    ctx.imageSmoothingQuality = 'high';
-                    ctx.drawImage(tiny, 0, 0, blurred.width, blurred.height);
-                    var dataUrl = blurred.toDataURL('image/jpeg', 0.72);
-                    state.base64 = dataUrl.split(',')[1];
-                    document.getElementById('preview-img').src = dataUrl;
-                    document.getElementById('form-photo').src = dataUrl;
-                    var now = new Date();
-                    document.getElementById('f-date').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
-                    document.getElementById('f-time').value = now.toTimeString().slice(0, 5);
-                    document.getElementById('f-item').value = '';
-                    document.getElementById('f-location').value = '';
-                    document.getElementById('f-person').value = '';
-                    document.getElementById('f-notes').value = state.surname ? state.surname + '様' : '';
-                    document.getElementById('f-valuable').checked = true;
-                    document.getElementById('f-high-value').checked = false;
-                    document.getElementById('form-mode-badge').textContent = '🔒 画像全体ぼかし済・内容は手入力してください';
-                    document.getElementById('form-error').classList.remove('show');
-                    showScreen('form');
-                } catch (_) {
-                    showToast('❌ ぼかしに失敗しました。写真を撮り直してください');
-                    showScreen('home');
-                } finally {
-                    original = '';
-                    img.onload = null;
-                    img.onerror = null;
-                    img.removeAttribute('src');
-                    btn.disabled = false;
-                    btn.textContent = '🔒 全体をぼかして登録へ';
-                }
+            document.getElementById('private-kind').selectedIndex = 0;
+            document.getElementById('private-surname').value = '';
+            showScreen('private');
+        }
+
+        function illustrationDataUrl(kind) {
+            var colors = {
+                '運転免許証': ['#2563eb', '#93c5fd'], 'マイナンバーカード': ['#0d9488', '#99f6e4'],
+                '健康保険証': ['#0891b2', '#a5f3fc'], 'クレジットカード': ['#7c3aed', '#ddd6fe'],
+                'キャッシュカード': ['#d97706', '#fde68a'], 'パスポート': ['#be123c', '#fecdd3']
             };
-            img.onerror = function() {
-                original = '';
-                img.onload = null;
-                img.onerror = null;
-                btn.disabled = false;
-                btn.textContent = '🔒 全体をぼかして登録へ';
-                showToast('❌ 画像を開けません。写真を撮り直してください');
-                showScreen('home');
-            };
-            img.src = original;
+            var palette = colors[kind] || ['#475569', '#cbd5e1'];
+            var canvas = document.createElement('canvas');
+            canvas.width = 640; canvas.height = 400;
+            var ctx = canvas.getContext('2d');
+            var bg = ctx.createLinearGradient(0, 0, 640, 400);
+            bg.addColorStop(0, palette[0]); bg.addColorStop(1, '#0f172a');
+            ctx.fillStyle = bg; ctx.fillRect(0, 0, 640, 400);
+            ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.fillRect(68, 60, 504, 280);
+            ctx.fillStyle = palette[0]; ctx.fillRect(68, 60, 504, 68);
+            ctx.fillStyle = '#ffffff'; ctx.font = 'bold 29px sans-serif'; ctx.fillText(kind, 96, 104);
+            if (kind === 'パスポート') {
+                ctx.strokeStyle = palette[0]; ctx.lineWidth = 9;
+                ctx.beginPath(); ctx.arc(193, 225, 48, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(193, 225, 23, 48, 0, 0, Math.PI * 2); ctx.stroke();
+            } else if (/カード/.test(kind)) {
+                ctx.fillStyle = palette[1]; ctx.fillRect(125, 175, 136, 90);
+                ctx.fillStyle = palette[0]; ctx.fillRect(145, 197, 45, 29);
+                ctx.fillRect(145, 243, 92, 7);
+            } else {
+                ctx.fillStyle = palette[1];
+                ctx.beginPath(); ctx.arc(193, 205, 30, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(193, 278, 62, 45, 0, Math.PI, true); ctx.fill();
+            }
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(308, 181, 197, 12); ctx.fillRect(308, 214, 160, 12); ctx.fillRect(308, 247, 180, 12);
+            ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = '#475569';
+            ctx.fillText('写真なし・種類を示すイラスト', 96, 313);
+            return canvas.toDataURL('image/jpeg', .82);
+        }
+
+        function preparePrivateEntry() {
+            var kind = document.getElementById('private-kind').value;
+            try {
+                var illustration = illustrationDataUrl(kind);
+                state.base64 = illustration.split(',')[1];
+                state.mime = 'image/jpeg';
+                state.driveFileId = null;
+                state.aiResult = null;
+                state.privacyMode = true;
+                state.surname = document.getElementById('private-surname').value.trim().replace(/様$/, '').trim();
+                document.getElementById('form-photo').src = illustration;
+                document.getElementById('form-photo').classList.add('illustration');
+                var now = new Date();
+                document.getElementById('f-date').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+                document.getElementById('f-time').value = now.toTimeString().slice(0, 5);
+                document.getElementById('f-item').value = kind;
+                document.getElementById('f-location').value = '';
+                document.getElementById('f-person').value = '';
+                document.getElementById('f-notes').value = state.surname ? state.surname + '様' : '';
+                document.getElementById('f-valuable').checked = true;
+                document.getElementById('f-high-value').checked = false;
+                document.getElementById('form-mode-badge').textContent = '🪪 写真なし・イラスト登録（内容を確認してください）';
+                document.getElementById('form-error').classList.remove('show');
+                showScreen('form');
+            } catch (_) {
+                state.base64 = null;
+                showToast('❌ イラストを作成できませんでした');
+            }
         }
 
         function resizeImage(file, maxPx, callback) {
@@ -476,10 +535,7 @@
 
         function startAnalysis() {
             if (!state.base64 || state.privacyMode) { showToast('⚠️ 写真を撮り直してください'); return; }
-            if (document.getElementById('privacy-surname').value.trim()) {
-                showToast('⚠️ 苗字を入力した写真は「全体をぼかして登録へ」を選んでください'); return;
-            }
-            if (!confirm('顔写真・氏名・住所などの個人情報が写っていませんか？\n写っている場合はキャンセルして「全体をぼかして登録へ」を選んでください。')) return;
+            if (!confirm('顔写真・氏名・住所などの個人情報が写っていませんか？\n写っている場合はキャンセルして「写真を破棄してイラスト登録へ」を選んでください。')) return;
             showScreen('analyzing');
             var now  = new Date();
             var date = now.toISOString().split('T')[0];
@@ -513,7 +569,7 @@
             var errorEl = document.getElementById('form-error');
             errorEl.classList.remove('show');
             if (state.privacyMode && (!state.base64 || state.driveFileId || !document.getElementById('f-item').value.trim())) {
-                errorEl.textContent = '❌ ぼかし画像と品名を確認してください。';
+                errorEl.textContent = '❌ イラストと品名を確認してください。';
                 errorEl.classList.add('show'); return;
             }
             if (state.privacyMode && state.surname) {
@@ -539,6 +595,7 @@
                     time: document.getElementById('f-time').value, item: result.item || document.getElementById('f-item').value,
                     person: document.getElementById('f-person').value, location: document.getElementById('f-location').value };
                 saveManualEntry(savedItem, { valuable: document.getElementById('f-valuable').checked, highValue: document.getElementById('f-high-value').checked });
+                invalidateListCache();
                 showScreen('success');
             }).catch(function (err) {
                 btn.disabled = false; btn.innerHTML = '✅ &nbsp;スプレッドシートに登録';
@@ -547,22 +604,52 @@
         }
 
         var allListItems = [];
+        var visibleListItems = [];
+        var allListLoadedAt = 0;
+        var allListRequest = null;
+        var listFetchSerial = 0;
         var activePeriod = 'month';
         var statusFilter = 'all';
+        var manualEntriesCache = null;
+        function invalidateListCache() { allListLoadedAt = 0; allListRequest = null; listFetchSerial++; }
+        function fetchAllList(force) {
+            if (!force && allListRequest) return allListRequest;
+            if (!force && allListLoadedAt && Date.now() - allListLoadedAt < 30000) return Promise.resolve(allListItems);
+            var serial = ++listFetchSerial;
+            var request = callGasApi({ action: 'list', period: 'all' }).then(function(result) {
+                if (!result.success || !result.items) throw new Error(result.error || 'データ取得に失敗しました');
+                if (serial === listFetchSerial) {
+                    allListItems = result.items;
+                    allListLoadedAt = Date.now();
+                }
+                return result.items;
+            });
+            allListRequest = request;
+            return request.finally(function() { if (allListRequest === request) allListRequest = null; });
+        }
         const MANUAL_KEY = 'hirotokubutsu-manual-classification-v1';
+        window.addEventListener('storage', function(event) { if (event.key === MANUAL_KEY) manualEntriesCache = null; });
+        function manualEntries() {
+            if (manualEntriesCache) return manualEntriesCache;
+            try {
+                var entries = JSON.parse(localStorage.getItem(MANUAL_KEY) || '{}');
+                manualEntriesCache = entries && typeof entries === 'object' && !Array.isArray(entries) ? entries : {};
+            }
+            catch (_) { manualEntriesCache = {}; }
+            return manualEntriesCache;
+        }
         function manualKey(it) {
             return JSON.stringify([it.sheetName, Number(it.row), it.date || '', it.time || '', it.item || '', it.person || '', it.location || '']);
         }
         function manualEntry(it) {
-            try { return JSON.parse(localStorage.getItem(MANUAL_KEY) || '{}')[manualKey(it)] || {}; }
-            catch (_) { return {}; }
+            return manualEntries()[manualKey(it)] || {};
         }
         function saveManualEntry(it, change) {
             try {
-                var entries = JSON.parse(localStorage.getItem(MANUAL_KEY) || '{}');
+                var entries = manualEntries();
                 entries[manualKey(it)] = Object.assign({}, entries[manualKey(it)] || {}, change);
                 localStorage.setItem(MANUAL_KEY, JSON.stringify(entries));
-            } catch (_) { showToast('⚠️ この端末に指定を保存できませんでした'); }
+            } catch (_) { manualEntriesCache = null; showToast('⚠️ この端末に指定を保存できませんでした'); }
         }
 
         function cashAmount(it) {
@@ -642,32 +729,29 @@
         }
         function refreshHomeAlerts() {
             document.getElementById('home-police-alert').textContent = '警察届の優先対象を確認中…';
-            callGasApi({ action: 'list', period: 'all' }).then(result => {
-                if (!result.success) throw new Error(result.error || '取得失敗');
-                document.getElementById('home-police-alert').innerHTML = alertHtml(policeAlerts(result.items || []));
+            fetchAllList(false).then(items => {
+                document.getElementById('home-police-alert').innerHTML = alertHtml(policeAlerts(items));
             }).catch(() => { document.getElementById('home-police-alert').textContent = '⚠️ 警察届の優先対象を取得できません。台帳を直接確認してください。'; });
         }
 
-        function showList(period) {
+        function showList(period, forceRefresh) {
             activePeriod = period || activePeriod;
             showScreen('list');
-            document.getElementById('list-state-area').innerHTML = '<div class="list-state"><div class="list-spinner"></div>読み込み中...</div>';
-            document.getElementById('list-table-wrap').style.display = 'none';
-            document.getElementById('list-stats').innerHTML = '';
-            document.getElementById('list-police-alert').textContent = '';
-
-            ['month','prev','all'].forEach(p => {
-                document.getElementById('lf-' + p).classList.toggle('active', p === activePeriod);
-            });
-
-            callGasApi({ action: 'list', period: 'all' }).then(function (result) {
-                if (!result.success || !result.items) {
-                    document.getElementById('list-state-area').innerHTML = '<div class="list-state">❌ データ取得に失敗しました</div>'; return;
-                }
-                allListItems = result.items || [];
+            updatePeriodBtnUI();
+            updateStatusBtnUI();
+            if (allListLoadedAt) {
                 renderList();
+            } else {
+                document.getElementById('list-state-area').innerHTML = '<div class="list-state"><div class="list-spinner"></div>読み込み中...</div>';
+                document.getElementById('list-table-wrap').style.display = 'none';
+                document.getElementById('list-stats').innerHTML = '';
+                document.getElementById('list-police-alert').textContent = '';
+            }
+            fetchAllList(!!forceRefresh).then(function () {
+                if (document.getElementById('screen-list').classList.contains('active')) renderList();
             }).catch(function (err) {
-                document.getElementById('list-state-area').innerHTML = '<div class="list-state">❌ ' + escHtml(err.message) + '</div>';
+                if (allListLoadedAt) showToast('⚠️ 更新できませんでした。表示中のデータは前回取得分です');
+                else document.getElementById('list-state-area').innerHTML = '<div class="list-state">❌ ' + escHtml(err.message) + '</div>';
             });
         }
 
@@ -675,7 +759,7 @@
             statusFilter = 'all';
             updateStatusBtnUI();
             activePeriod = p;
-            if (!allListItems.length) { showList(p); return; }
+            if (!allListLoadedAt) { showList(p); return; }
             updatePeriodBtnUI(); renderList();
         }
 
@@ -683,7 +767,7 @@
             statusFilter = (statusFilter === s) ? 'all' : s;
             updateStatusBtnUI();
             if (statusFilter !== 'all') activePeriod = 'all';
-            if (!allListItems.length) { showList(activePeriod); return; }
+            if (!allListLoadedAt) { showList(activePeriod); return; }
             updatePeriodBtnUI(); renderList();
         }
 
@@ -727,7 +811,7 @@
             var btn = document.getElementById('bulk-delete-btn');
             btn.disabled = true; btn.innerHTML = '削除中...';
             callGasApi({ action: 'bulkDelete', targets: targets }).then(function(res) {
-                if (res.success) { showToast('✅ 一括削除が完了しました'); showList(); } 
+                if (res.success) { invalidateListCache(); showToast('✅ 一括削除が完了しました'); showList(); }
                 else { showToast('❌ エラー: ' + res.error); }
             }).catch(function(err) { showToast('❌ 通信エラー: ' + err.message); })
             .finally(function() { btn.disabled = false; btn.style.display = 'none'; });
@@ -745,6 +829,7 @@
                 if (statusFilter === 'police') return it.status && it.status.includes('警察');
                 return true;
             });
+            visibleListItems = items;
             document.getElementById('list-police-alert').innerHTML = alertHtml(policeAlerts(allListItems));
 
             var totalCash = 0;
@@ -776,14 +861,14 @@
 
             document.getElementById('list-state-area').innerHTML = '';
             document.getElementById('list-table-wrap').style.display = 'block';
-            document.getElementById('list-tbody').innerHTML = items.map(function(it) {
+            document.getElementById('list-tbody').innerHTML = items.map(function(it, index) {
                 
                 var isRet = it.status && it.status.includes('返却');
                 var isPol = it.status && it.status.includes('警察');
                 var isProcessed = isRet || isPol;
                 
                 var statusClass = isRet ? 'status-returned' : isPol ? 'status-police' : (it.status && it.status.includes('完了')) ? 'status-done' : (it.status && it.status.includes('エラー')) ? 'status-error' : 'status-pending';
-                var thumb = it.image ? '<img src="' + escHtml(it.image) + '" alt="" loading="lazy">' : '<div class="no-img">📷</div>';
+                var thumb = it.image ? '<button class="photo-thumb-btn" type="button" onclick="openPhoto(' + index + ')" aria-label="' + escAttr(it.item || '拾得物') + 'の写真を拡大"><img src="' + escAttr(it.image) + '" alt="" loading="lazy" decoding="async"></button>' : '<div class="no-img">📷</div>';
                 
                 var actionBtn = '';
                 if (isProcessed) {
@@ -806,6 +891,30 @@
                     '</tr>';
             }).join('');
         }
+
+        function openPhoto(index) {
+            var item = visibleListItems[index];
+            if (!item || !item.image) return;
+            try {
+                var url = new URL(item.image, window.location.href);
+                if (url.protocol !== 'https:' && !(url.protocol === 'data:' && /^data:image\//i.test(item.image))) throw new Error('画像URLを確認できません');
+                if (url.hostname === 'drive.google.com' && url.pathname === '/thumbnail') url.searchParams.set('sz', 'w1600');
+                var img = document.getElementById('photo-modal-img');
+                img.src = url.href;
+                document.getElementById('photo-modal-title').textContent = item.item || '拾得物の写真';
+                document.getElementById('photo-modal').classList.add('open');
+                document.body.style.overflow = 'hidden';
+                document.getElementById('photo-modal').querySelector('.photo-modal-close').focus();
+            } catch (_) { showToast('⚠️ 写真を開けませんでした'); }
+        }
+        function closePhoto() {
+            var modal = document.getElementById('photo-modal');
+            if (!modal.classList.contains('open')) return;
+            modal.classList.remove('open');
+            document.getElementById('photo-modal-img').removeAttribute('src');
+            document.body.style.overflow = '';
+        }
+        document.addEventListener('keydown', function(event) { if (event.key === 'Escape') closePhoto(); });
 
         function toggleValuable(row, sheetName, value) {
             var it = allListItems.find(x => x.row === row && x.sheetName === sheetName);
@@ -848,7 +957,7 @@
                     return callGasApi({ action: 'bulkDelete', targets: current.map(it => ({ sheetName: it.sheetName, row: it.row })) });
                 }).then(function(res) {
                     if (!res.success) throw new Error(res.error || '削除失敗');
-                    showToast('✅ ' + targets.length + '件を削除しました'); showList('all');
+                    invalidateListCache(); showToast('✅ ' + targets.length + '件を削除しました'); showList('all');
                 }).catch(function(err) { showToast('❌ ' + err.message); });
             }).catch(function(err) { showToast('❌ ' + err.message); });
         }
@@ -874,7 +983,7 @@
             closeProcessModal();
             callGasApi({ action: 'updateStatus', row: _processRow, sheetName: _processSheet, status: newStatus, returnDate: returnDate })
             .then(function(result) {
-                if (result.success) { showToast('✅ 状態を更新しました'); showList(); } 
+                if (result.success) { invalidateListCache(); showToast('✅ 状態を更新しました'); showList(); }
                 else { showToast('❌ エラー: ' + (result.error || '更新失敗')); }
             }).catch(function(err) { showToast('❌ 通信エラー: ' + err.message); });
         }
@@ -884,12 +993,13 @@
             
             callGasApi({ action: 'updateStatus', row: row, sheetName: sheetName, status: '完了 ✅' })
             .then(function(result) {
-                if (result.success) { showToast('✅ 未処理に戻しました'); showList(); } 
+                if (result.success) { invalidateListCache(); showToast('✅ 未処理に戻しました'); showList(); }
                 else { showToast('❌ エラー: ' + (result.error || '更新失敗')); }
             }).catch(function(err) { showToast('❌ 通信エラー: ' + err.message); });
         }
 
         function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
         function showToast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(function () { t.classList.remove('show'); }, 3000); }
     </script>
 </body>
