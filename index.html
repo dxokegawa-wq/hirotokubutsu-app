@@ -469,11 +469,14 @@
             var name = String(it.item || '');
             if (!/(現金|硬貨|紙幣|お金|お札|\d+円札|[一二三五千万円]+円札)/.test(name)) return 0;
             var text = (name + ' ' + (it.notes || '')).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-            var nums = Array.from(text.matchAll(/([\d,，]+)\s*円/g), m => Number(m[1].replace(/[,，]/g, '')));
-            if (/一万円|壱万円/.test(text)) nums.push(10000);
-            if (/五千円/.test(text)) nums.push(5000);
-            if (/千円/.test(text) && !/五千円/.test(text)) nums.push(1000);
-            return nums.length ? Math.max(...nums) : 0;
+            var statedTotal = text.match(/(?:合計|総額|計)\s*([\d,，]+)\s*円/);
+            var parts = text.replace(/(?:合計|総額|計)\s*[\d,，]+\s*円/g, '');
+            var denominations = Array.from(parts.matchAll(/([\d,，]+|一万|壱万|五千|千)\s*円(?:札|玉)?\s*(?:(\d+)\s*枚)?/g), m => {
+                var amount = ({ '一万': 10000, '壱万': 10000, '五千': 5000, '千': 1000 })[m[1]] || Number(m[1].replace(/[,，]/g, ''));
+                return amount * Number(m[2] || 1);
+            });
+            return Math.max(statedTotal ? Number(statedTotal[1].replace(/[,，]/g, '')) : 0,
+                denominations.reduce((sum, amount) => sum + amount, 0));
         }
         function highValue(it) {
             var manual = manualEntry(it);
@@ -721,7 +724,7 @@
                 var targets = oldCandidates(result.items || [], mode);
                 if (!targets.length) { showToast('画面で取得できる対象はありません'); return; }
                 var months = [...new Set(targets.map(it => it.sheetName))];
-                var message = '先々月以前の' + (mode === 'ret' ? '返却済み' : '全件') + ' ' + targets.length + '件を台帳から削除します。\n対象月: ' + months.join('、') + '\nGASの一覧取得上限は各月直近100件です。対象外の古い行は残る可能性があります。写真はDriveに残り、台帳の削除は元に戻せません。続けますか？';
+                var message = '先々月以前の' + (mode === 'ret' ? '返却済み' : '全件') + ' ' + targets.length + '件を台帳から削除します。\n対象月: ' + months.join('、') + '\n台帳には年がないため、今月・先月と同じ月名の過去年分は判別できず対象外です。GASの一覧取得上限は各月直近100件で、それ以前の行も残る可能性があります。写真はDriveに残り、台帳の削除は元に戻せません。続けますか？';
                 if (!confirm(message)) return;
                 var typed = prompt('誤操作防止のため「' + targets.length + '件削除」と入力してください。');
                 if (typed !== targets.length + '件削除') return;
