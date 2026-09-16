@@ -138,6 +138,11 @@
         .error-banner.show { display: block; animation: screenIn 0.3s ease; }
 
         .delete-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #ef4444; }
+        .police-alert { margin: 12px 16px; padding: 14px; border-radius: 14px; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35); color: #fecaca; font-size: 13px; line-height: 1.6; text-align: left; }
+        .police-alert strong { display: block; color: #fff; }
+        .valuable-badge { color: #fbbf24; font-size: 11px; white-space: nowrap; }
+        .valuable-toggle { margin-top: 4px; border-color: rgba(251,191,36,.35); color: #fbbf24; background: rgba(251,191,36,.08); }
+        .bulk-old-btn { border: 1px solid rgba(239,68,68,.4); background: rgba(239,68,68,.1); color: #fca5a5; border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
     </style>
 </head>
 
@@ -164,6 +169,7 @@
             <button class="btn btn-secondary" onclick="showList()">📋 &nbsp;登録一覧を見る</button>
             <button class="btn btn-secondary" onclick="showScreen('setup')" style="font-size:13px; padding:12px;">⚙️ URL設定を変更</button>
         </div>
+        <div id="home-police-alert" style="width:100%;max-width:400px;"></div>
         <div class="home-footer">Powered by Gemini AI ✨</div>
     </div>
 
@@ -221,6 +227,11 @@
                 <label class="form-label">📝 備考</label>
                 <textarea id="f-notes" class="form-textarea" placeholder="その他の特記事項"></textarea>
             </div>
+            <div class="form-group" style="font-size:13px;line-height:2;">
+                <label><input type="checkbox" id="f-valuable"> 貴重品として登録</label><br>
+                <label><input type="checkbox" id="f-high-value"> 1万円以上の価値が明らか（要確認）</label><br>
+                <small style="color:#94a3b8;">手動指定はこの端末に保存されます。別端末には同期されません。</small>
+            </div>
             <button class="btn btn-success btn-lg" onclick="submitForm()" id="submit-btn">✅ &nbsp;スプレッドシートに登録</button>
         </div>
     </div>
@@ -249,10 +260,12 @@
             <button class="list-filter-btn active" id="lf-month" onclick="setListFilter('month')">今月</button>
             <button class="list-filter-btn" id="lf-prev"  onclick="setListFilter('prev')">先月</button>
             <button class="list-filter-btn" id="lf-all"   onclick="setListFilter('all')">全て</button>
+            <button class="list-filter-btn" id="lf-valuable" onclick="setStatusFilter('valuable')">貴重品</button>
             <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
             <button class="list-filter-btn" id="lf-ret"   onclick="setStatusFilter('ret')">返却済み</button>
             <button class="list-filter-btn" id="lf-police" onclick="setStatusFilter('police')">警察届済み</button>
         </div>
+        <div id="list-police-alert"></div>
 
         <div class="list-stats" id="list-stats"></div>
         <div id="list-state-area"></div>
@@ -324,6 +337,7 @@
             document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
             document.getElementById('screen-' + name).classList.add('active');
             window.scrollTo(0, 0);
+            if (name === 'home' && GAS_URL) refreshHomeAlerts();
         }
 
         // 🚀 シンプルに一発起動へ戻しました
@@ -394,6 +408,8 @@
                 document.getElementById('f-location').value = ai.location || '';
                 document.getElementById('f-person').value   = '';
                 document.getElementById('f-notes').value    = ai.notes    || '';
+                document.getElementById('f-high-value').checked = ai.highValue === true || highValue({ item: ai.item, notes: ai.notes });
+                document.getElementById('f-valuable').checked = ai.highValue === true || isValuable({ item: ai.item, notes: ai.notes });
                 document.getElementById('form-error').classList.remove('show');
                 showScreen('form');
             }).catch(function (err) {
@@ -417,6 +433,12 @@
                 }
                 document.getElementById('success-item-name').textContent = result.item || '（品名なし）';
                 document.getElementById('success-row-info').textContent = '行 ' + result.row + ' に登録されました';
+                var enteredDate = document.getElementById('f-date').value.split('-');
+                var savedItem = { sheetName: (new Date().getMonth()+1) + '月', row: result.row,
+                    date: Number(enteredDate[1]) + '月' + Number(enteredDate[2]) + '日',
+                    time: document.getElementById('f-time').value, item: result.item || document.getElementById('f-item').value,
+                    person: document.getElementById('f-person').value, location: document.getElementById('f-location').value };
+                saveManualEntry(savedItem, { valuable: document.getElementById('f-valuable').checked, highValue: document.getElementById('f-high-value').checked });
                 showScreen('success');
             }).catch(function (err) {
                 btn.disabled = false; btn.innerHTML = '✅ &nbsp;スプレッドシートに登録';
@@ -427,6 +449,83 @@
         var allListItems = [];
         var activePeriod = 'month';
         var statusFilter = 'all';
+        const MANUAL_KEY = 'hirotokubutsu-manual-classification-v1';
+        function manualKey(it) {
+            return JSON.stringify([it.sheetName, Number(it.row), it.date || '', it.time || '', it.item || '', it.person || '', it.location || '']);
+        }
+        function manualEntry(it) {
+            try { return JSON.parse(localStorage.getItem(MANUAL_KEY) || '{}')[manualKey(it)] || {}; }
+            catch (_) { return {}; }
+        }
+        function saveManualEntry(it, change) {
+            try {
+                var entries = JSON.parse(localStorage.getItem(MANUAL_KEY) || '{}');
+                entries[manualKey(it)] = Object.assign({}, entries[manualKey(it)] || {}, change);
+                localStorage.setItem(MANUAL_KEY, JSON.stringify(entries));
+            } catch (_) { showToast('⚠️ この端末に指定を保存できませんでした'); }
+        }
+
+        function cashAmount(it) {
+            var name = String(it.item || '');
+            if (!/(現金|硬貨|紙幣|お金|お札|\d+円札|[一二三五千万円]+円札)/.test(name)) return 0;
+            var text = (name + ' ' + (it.notes || '')).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+            var nums = Array.from(text.matchAll(/([\d,，]+)\s*円/g), m => Number(m[1].replace(/[,，]/g, '')));
+            if (/一万円|壱万円/.test(text)) nums.push(10000);
+            if (/五千円/.test(text)) nums.push(5000);
+            if (/千円/.test(text) && !/五千円/.test(text)) nums.push(1000);
+            return nums.length ? Math.max(...nums) : 0;
+        }
+        function highValue(it) {
+            var manual = manualEntry(it);
+            if (typeof manual.highValue === 'boolean') return manual.highValue;
+            if (it.highValue === true || it.highValue === 'TRUE') return true;
+            var text = String(it.item || '') + ' ' + String(it.notes || '');
+            if (/(ロレックス|高級腕時計|ダイヤモンド|プラチナ|金製|MacBook|ノートパソコン|一眼レフ)/i.test(text)) return true;
+            if (/(?:価値|相場|価格|定価|時価|査定).{0,12}(?:1[\d,，]*|[2-9][\d,，]*)万円|(?:1[\d,，]*|[2-9][\d,，]*)万円.{0,12}(?:相当|以上|価値)/.test(text)) return true;
+            return Array.from(text.matchAll(/(?:価値|相場|価格|定価|時価|査定).{0,12}([\d,，]+)\s*円/g)).some(m => Number(m[1].replace(/[,，]/g, '')) >= 10000);
+        }
+        function isValuable(it) {
+            var manual = manualEntry(it);
+            if (typeof manual.valuable === 'boolean') return manual.valuable;
+            if (it.valuable === 'yes') return true;
+            if (it.valuable === 'no') return false;
+            var name = String(it.item || '');
+            return cashAmount(it) >= 1000 || /(スマホ|スマートフォン|携帯電話|iPhone|財布|運転免許証|免許証|マイナンバーカード|クレジットカード|キャッシュカード)/i.test(name) || highValue(it);
+        }
+        function needsPolicePriority(it) {
+            var status = String(it.status || '');
+            return !/返却|警察/.test(status) && (cashAmount(it) >= 5000 || /(運転免許証|免許証)/.test(String(it.item || '')) || highValue(it));
+        }
+        function foundDate(it) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(it.isoDate || '')) return new Date(it.isoDate + 'T12:00:00');
+            var match = String(it.date || '').match(/(\d{1,2})月(\d{1,2})日/);
+            if (!match) return null;
+            var now = new Date(), date = new Date(now.getFullYear(), Number(match[1])-1, Number(match[2]), 12);
+            if (date > new Date(now.getFullYear(), now.getMonth(), now.getDate()+1)) date.setFullYear(date.getFullYear()-1);
+            return date;
+        }
+        function policeAlerts(items) {
+            var today = new Date(); today.setHours(12,0,0,0);
+            return items.filter(needsPolicePriority).map(function(it) {
+                var date = foundDate(it);
+                if (!date || isNaN(date)) return null;
+                var days = Math.round((date.getTime() + 7*86400000 - today.getTime()) / 86400000);
+                return Object.assign({}, it, { daysLeft: days });
+            }).filter(Boolean).sort((a,b) => a.daysLeft-b.daysLeft);
+        }
+        function alertHtml(items) {
+            if (!items.length) return '';
+            var urgent = items.filter(it => it.daysLeft <= 2);
+            var details = items.slice(0, 4).map(it => escHtml(it.item || '品名なし') + '（' + (it.daysLeft < 0 ? '期限超過' : it.daysLeft === 0 ? '今日が目安' : 'あと' + it.daysLeft + '日') + '）').join('、');
+            return '<div class="police-alert" role="status"><strong>🚓 警察届の優先確認 ' + items.length + '件' + (urgent.length ? '・期限間近/超過 ' + urgent.length + '件' : '') + '</strong>' + details + (items.length > 4 ? ' ほか' : '') + '<br><small>拾得日から7日を目安に確認。年のない過去記録は推定です。これは指定条件の優先通知で、その他の落とし物の届出要否を免除しません。</small></div>';
+        }
+        function refreshHomeAlerts() {
+            document.getElementById('home-police-alert').textContent = '警察届の優先対象を確認中…';
+            callGasApi({ action: 'list', period: 'all' }).then(result => {
+                if (!result.success) throw new Error(result.error || '取得失敗');
+                document.getElementById('home-police-alert').innerHTML = alertHtml(policeAlerts(result.items || []));
+            }).catch(() => { document.getElementById('home-police-alert').textContent = '⚠️ 警察届の優先対象を取得できません。台帳を直接確認してください。'; });
+        }
 
         function showList(period) {
             activePeriod = period || activePeriod;
@@ -434,12 +533,13 @@
             document.getElementById('list-state-area').innerHTML = '<div class="list-state"><div class="list-spinner"></div>読み込み中...</div>';
             document.getElementById('list-table-wrap').style.display = 'none';
             document.getElementById('list-stats').innerHTML = '';
+            document.getElementById('list-police-alert').textContent = '';
 
             ['month','prev','all'].forEach(p => {
                 document.getElementById('lf-' + p).classList.toggle('active', p === activePeriod);
             });
 
-            callGasApi({ action: 'list', period: activePeriod }).then(function (result) {
+            callGasApi({ action: 'list', period: 'all' }).then(function (result) {
                 if (!result.success || !result.items) {
                     document.getElementById('list-state-area').innerHTML = '<div class="list-state">❌ データ取得に失敗しました</div>'; return;
                 }
@@ -459,11 +559,12 @@
         function setStatusFilter(s) {
             statusFilter = (statusFilter === s) ? 'all' : s;
             updateStatusBtnUI();
-            renderList();
+            if (statusFilter !== 'all') activePeriod = 'all';
+            showList(activePeriod);
         }
         
         function updateStatusBtnUI() {
-            ['ret', 'police'].forEach(s => {
+            ['valuable', 'ret', 'police'].forEach(s => {
                 document.getElementById('lf-' + s).classList.toggle('active', s === statusFilter);
             });
         }
@@ -520,17 +621,17 @@
 
         function renderList() {
             var items = allListItems.filter(function(it) {
+                if (activePeriod === 'month' && it.sheetName !== (new Date().getMonth()+1) + '月') return false;
+                if (activePeriod === 'prev') {
+                    var prev = new Date(); prev.setMonth(prev.getMonth()-1);
+                    if (it.sheetName !== (prev.getMonth()+1) + '月') return false;
+                }
+                if (statusFilter === 'valuable') return isValuable(it);
                 if (statusFilter === 'ret') return it.status && it.status.includes('返却');
                 if (statusFilter === 'police') return it.status && it.status.includes('警察');
                 return true;
             });
-
-            if (activePeriod === 'prev') {
-                var prevMonth = new Date();
-                prevMonth.setMonth(prevMonth.getMonth() - 1);
-                var prevStr = (prevMonth.getMonth() + 1) + '月';
-                items = items.filter(it => it.sheetName === prevStr);
-            }
+            document.getElementById('list-police-alert').innerHTML = alertHtml(policeAlerts(allListItems));
 
             var totalCash = 0;
             items.forEach(function(it) { totalCash += extractCashAmount(it.item || '', it.notes || ''); });
@@ -550,7 +651,8 @@
                 '<div style="width:100%; padding: 10px; background: rgba(10, 15, 30, 0.95); border: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; border-radius: 8px; margin-bottom: 10px;">' +
                 '<span style="color:#34d399; font-weight:bold; font-size:13px;">💰 現金合計：' + totalCash.toLocaleString() + ' 円</span>' +
                 '<button id="bulk-delete-btn" class="ret-btn" style="background:#ef4444; color:white; border:none; display:none; margin:0;" onclick="confirmBulkDelete()"></button>' +
-                '</div>';
+                '</div>' +
+                (activePeriod === 'all' && (statusFilter === 'all' || statusFilter === 'ret') ? '<button class="bulk-old-btn" onclick="confirmOldDelete()">🗑 先々月以前の' + (statusFilter === 'ret' ? '返却済み' : '全件') + 'を確認して一括削除</button>' : '');
 
             if (items.length === 0) {
                 document.getElementById('list-table-wrap').style.display = 'none';
@@ -580,14 +682,61 @@
                     '<td style="text-align:center;"><input type="checkbox" class="delete-checkbox" data-sheet="' + escHtml(it.sheetName) + '" data-row="' + it.row + '" onchange="toggleBulkDeleteBtn()"></td>' +
                     '<td class="td-thumb">' + thumb + '</td>' +
                     '<td style="white-space:nowrap">' + escHtml((it.date || '') + ' ' + (it.time || '')) + '</td>' +
-                    '<td class="td-item">' + escHtml(it.item || '---') + '</td>' +
+                    '<td class="td-item">' + escHtml(it.item || '---') + (isValuable(it) ? ' <span class="valuable-badge">💎 貴重品</span>' : '') + (needsPolicePriority(it) ? ' <span class="valuable-badge" style="color:#fca5a5">🚓 要確認</span>' : '') + '</td>' +
                     '<td>' + escHtml(it.location || '---') + '</td>' +
                     '<td>' + escHtml(it.person || '---') + '</td>' +
                     '<td><span class="status-badge ' + statusClass + '">' + escHtml(it.status || '---') + '</span></td>' +
                     '<td class="td-notes">' + escHtml(it.notes || '---') + '</td>' +
-                    '<td>' + actionBtn + '</td>' +
+                    '<td>' + actionBtn + '<br><button class="ret-btn valuable-toggle" onclick="toggleValuable(' + it.row + ',\'' + escHtml(it.sheetName) + '\',' + (!isValuable(it)) + ')">' + (isValuable(it) ? '💎 解除' : '💎 貴重品へ') + '</button>' +
+                    '<br><button class="ret-btn valuable-toggle" onclick="toggleHighValue(' + it.row + ',\'' + escHtml(it.sheetName) + '\',' + (!highValue(it)) + ')">' + (highValue(it) ? '🚓 高額解除' : '🚓 高額品指定') + '</button></td>' +
                     '</tr>';
             }).join('');
+        }
+
+        function toggleValuable(row, sheetName, value) {
+            var it = allListItems.find(x => x.row === row && x.sheetName === sheetName);
+            if (!it) return;
+            saveManualEntry(it, { valuable: value });
+            renderList(); showToast('✅ この端末の貴重品指定を更新しました');
+        }
+        function toggleHighValue(row, sheetName, value) {
+            var it = allListItems.find(x => x.row === row && x.sheetName === sheetName);
+            if (!it) return;
+            saveManualEntry(it, { highValue: value });
+            renderList(); showToast('✅ この端末の高額品指定を更新しました');
+        }
+        function oldCandidates(items, mode) {
+            var thisMonth = new Date().getMonth()+1;
+            return items.filter(function(it) {
+                var match = String(it.sheetName || '').match(/^(\d{1,2})月$/);
+                if (!match) return false;
+                var age = (thisMonth-Number(match[1])+12)%12;
+                return age >= 2 && (mode !== 'ret' || String(it.status || '').includes('返却'));
+            });
+        }
+        function confirmOldDelete() {
+            var mode = statusFilter === 'ret' ? 'ret' : 'all';
+            callGasApi({ action: 'list', period: 'all' }).then(function(result) {
+                if (!result.success) throw new Error(result.error || '取得失敗');
+                var targets = oldCandidates(result.items || [], mode);
+                if (!targets.length) { showToast('画面で取得できる対象はありません'); return; }
+                var months = [...new Set(targets.map(it => it.sheetName))];
+                var message = '先々月以前の' + (mode === 'ret' ? '返却済み' : '全件') + ' ' + targets.length + '件を台帳から削除します。\n対象月: ' + months.join('、') + '\nGASの一覧取得上限は各月直近100件です。対象外の古い行は残る可能性があります。写真はDriveに残り、台帳の削除は元に戻せません。続けますか？';
+                if (!confirm(message)) return;
+                var typed = prompt('誤操作防止のため「' + targets.length + '件削除」と入力してください。');
+                if (typed !== targets.length + '件削除') return;
+                // 行番号が変わっていないか再取得で照合してから既存の一括削除APIを使う。
+                callGasApi({ action: 'list', period: 'all' }).then(function(latest) {
+                    if (!latest.success) throw new Error(latest.error || '再確認失敗');
+                    var current = oldCandidates(latest.items || [], mode);
+                    var signature = arr => arr.map(it => manualKey(it) + '|' + it.status).sort().join('\n');
+                    if (signature(current) !== signature(targets)) throw new Error('対象が変わりました。更新してやり直してください');
+                    return callGasApi({ action: 'bulkDelete', targets: current.map(it => ({ sheetName: it.sheetName, row: it.row })) });
+                }).then(function(res) {
+                    if (!res.success) throw new Error(res.error || '削除失敗');
+                    showToast('✅ ' + targets.length + '件を削除しました'); showList('all');
+                }).catch(function(err) { showToast('❌ ' + err.message); });
+            }).catch(function(err) { showToast('❌ ' + err.message); });
         }
 
         var _processRow = null, _processSheet = null;
