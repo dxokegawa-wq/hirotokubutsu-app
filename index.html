@@ -60,10 +60,15 @@
         .home-buttons { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
         .home-footer { font-size: 11px; color: #1e3a5f; margin-top: 4px; letter-spacing: 0.5px; }
         
-        #screen-preview { background: #000; }
-        #preview-img { width: 100%; flex: 1; object-fit: contain; max-height: 72vh; }
+        #screen-preview { background: #000; overflow-y: auto; }
+        #preview-img { width: 100%; flex: 1; min-height: 180px; object-fit: contain; max-height: 55vh; }
         .preview-actions { padding: 20px; display: flex; gap: 12px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.7)); }
         .preview-actions .btn { flex: 1; }
+        .privacy-panel { margin: 12px 20px 0; padding: 16px; border: 1px solid rgba(251, 191, 36, .45); border-radius: 16px; background: rgba(120, 53, 15, .18); line-height: 1.6; }
+        .privacy-panel strong { display: block; color: #fde68a; margin-bottom: 6px; }
+        .privacy-panel p, .privacy-panel small { color: #cbd5e1; font-size: 12px; }
+        .privacy-panel .form-input { margin: 12px 0; }
+        .privacy-panel .btn { font-size: 14px; padding: 14px; }
         
         #screen-analyzing { align-items: center; justify-content: center; gap: 32px; padding: 40px; text-align: center; }
         .analyzing-wrap { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
@@ -175,9 +180,16 @@
 
     <div id="screen-preview" class="screen">
         <img id="preview-img" src="" alt="撮影した画像">
+        <div class="privacy-panel">
+            <strong>🔒 免許証・身分証など、個人情報が写る場合</strong>
+            <p>こちらを選ぶと写真全体を強くぼかしてから送信します。AI解析は行わず、品名は手入力します。</p>
+            <input type="text" id="privacy-surname" class="form-input" maxlength="20" autocomplete="off" placeholder="苗字だけ入力（例：田中／不明なら空欄）" aria-label="持ち主の苗字">
+            <button class="btn btn-secondary" id="privacy-btn" onclick="preparePrivateEntry()">🔒 全体をぼかして登録へ</button>
+            <small>苗字を入力すると、備考に「田中様」の形で入ります。元画像はAIやDriveに送信しません。</small>
+        </div>
         <div class="preview-actions">
             <button class="btn btn-secondary" onclick="showScreen('home')">✕ やり直す</button>
-            <button class="btn btn-primary" onclick="startAnalysis()">🤖 AI解析スタート</button>
+            <button class="btn btn-primary" onclick="startAnalysis()">個人情報なし・AI解析へ</button>
         </div>
     </div>
 
@@ -200,7 +212,7 @@
         <img id="form-photo" src="" alt="登録画像" class="form-photo-preview">
         <div id="form-error" class="error-banner"></div>
         <div class="form-body">
-            <div class="ai-badge">✨ AIが自動入力（修正できます）</div>
+            <div class="ai-badge" id="form-mode-badge">✨ AIが自動入力（修正できます）</div>
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">📅 日付</label>
@@ -331,7 +343,7 @@
             showToast('✅ URLを保存しました'); showScreen('home');
         }
 
-        const state = { base64: null, mime: 'image/jpeg', aiResult: null, driveFileId: null };
+        const state = { base64: null, mime: 'image/jpeg', aiResult: null, driveFileId: null, privacyMode: false, surname: '' };
 
         function showScreen(name) {
             document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
@@ -343,7 +355,7 @@
         // 🚀 シンプルに一発起動へ戻しました
         function openCamera() {
             var input = document.getElementById('camera-input');
-            input.value = ''; 
+            input.value = '';
             input.click();
         }
 
@@ -351,13 +363,87 @@
             var file = e.target.files[0];
             if (!file) return;
             resizeImage(file, 1280, function (dataUrl) {
+                e.target.value = '';
+                state.driveFileId = null;
+                state.aiResult = null;
+                state.privacyMode = false;
+                state.surname = '';
                 state.base64 = dataUrl.split(',')[1];
                 state.mime = 'image/jpeg';
+                document.getElementById('privacy-surname').value = '';
                 document.getElementById('preview-img').src = dataUrl;
                 document.getElementById('form-photo').src = dataUrl;
                 showScreen('preview');
             });
         });
+
+        function preparePrivateEntry() {
+            if (!state.base64 || state.driveFileId) { showToast('⚠️ 写真を撮り直してください'); return; }
+            var btn = document.getElementById('privacy-btn');
+            btn.disabled = true;
+            btn.textContent = '🔒 ぼかし処理中...';
+            var original = 'data:image/jpeg;base64,' + state.base64;
+            state.base64 = null;
+            state.privacyMode = true;
+            state.aiResult = null;
+            state.surname = document.getElementById('privacy-surname').value.trim().replace(/様$/, '').trim();
+            document.getElementById('preview-img').removeAttribute('src');
+            document.getElementById('form-photo').removeAttribute('src');
+            var img = new Image();
+            img.onload = function() {
+                try {
+                    // 最大18ピクセルまで縮小してから拡大し、文字・顔を判読不能にする。
+                    var scale = 18 / Math.max(img.width, img.height);
+                    var tiny = document.createElement('canvas');
+                    tiny.width = Math.max(1, Math.round(img.width * scale));
+                    tiny.height = Math.max(1, Math.round(img.height * scale));
+                    tiny.getContext('2d').drawImage(img, 0, 0, tiny.width, tiny.height);
+                    var blurred = document.createElement('canvas');
+                    blurred.width = img.width;
+                    blurred.height = img.height;
+                    var ctx = blurred.getContext('2d');
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(tiny, 0, 0, blurred.width, blurred.height);
+                    var dataUrl = blurred.toDataURL('image/jpeg', 0.72);
+                    state.base64 = dataUrl.split(',')[1];
+                    document.getElementById('preview-img').src = dataUrl;
+                    document.getElementById('form-photo').src = dataUrl;
+                    var now = new Date();
+                    document.getElementById('f-date').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+                    document.getElementById('f-time').value = now.toTimeString().slice(0, 5);
+                    document.getElementById('f-item').value = '';
+                    document.getElementById('f-location').value = '';
+                    document.getElementById('f-person').value = '';
+                    document.getElementById('f-notes').value = state.surname ? state.surname + '様' : '';
+                    document.getElementById('f-valuable').checked = true;
+                    document.getElementById('f-high-value').checked = false;
+                    document.getElementById('form-mode-badge').textContent = '🔒 画像全体ぼかし済・内容は手入力してください';
+                    document.getElementById('form-error').classList.remove('show');
+                    showScreen('form');
+                } catch (_) {
+                    showToast('❌ ぼかしに失敗しました。写真を撮り直してください');
+                    showScreen('home');
+                } finally {
+                    original = '';
+                    img.onload = null;
+                    img.onerror = null;
+                    img.removeAttribute('src');
+                    btn.disabled = false;
+                    btn.textContent = '🔒 全体をぼかして登録へ';
+                }
+            };
+            img.onerror = function() {
+                original = '';
+                img.onload = null;
+                img.onerror = null;
+                btn.disabled = false;
+                btn.textContent = '🔒 全体をぼかして登録へ';
+                showToast('❌ 画像を開けません。写真を撮り直してください');
+                showScreen('home');
+            };
+            img.src = original;
+        }
 
         function resizeImage(file, maxPx, callback) {
             var reader = new FileReader();
@@ -389,6 +475,11 @@
         }
 
         function startAnalysis() {
+            if (!state.base64 || state.privacyMode) { showToast('⚠️ 写真を撮り直してください'); return; }
+            if (document.getElementById('privacy-surname').value.trim()) {
+                showToast('⚠️ 苗字を入力した写真は「全体をぼかして登録へ」を選んでください'); return;
+            }
+            if (!confirm('顔写真・氏名・住所などの個人情報が写っていませんか？\n写っている場合はキャンセルして「全体をぼかして登録へ」を選んでください。')) return;
             showScreen('analyzing');
             var now  = new Date();
             var date = now.toISOString().split('T')[0];
@@ -408,6 +499,7 @@
                 document.getElementById('f-location').value = ai.location || '';
                 document.getElementById('f-person').value   = '';
                 document.getElementById('f-notes').value    = ai.notes    || '';
+                document.getElementById('form-mode-badge').textContent = '✨ AIが自動入力（修正できます）';
                 document.getElementById('f-high-value').checked = ai.highValue === true || highValue({ item: ai.item, notes: ai.notes });
                 document.getElementById('f-valuable').checked = ai.highValue === true || isValuable({ item: ai.item, notes: ai.notes });
                 document.getElementById('form-error').classList.remove('show');
@@ -418,10 +510,18 @@
         }
 
         function submitForm() {
-            var btn = document.getElementById('submit-btn');
-            btn.disabled = true; btn.textContent = '📤 送信中...';
             var errorEl = document.getElementById('form-error');
             errorEl.classList.remove('show');
+            if (state.privacyMode && (!state.base64 || state.driveFileId || !document.getElementById('f-item').value.trim())) {
+                errorEl.textContent = '❌ ぼかし画像と品名を確認してください。';
+                errorEl.classList.add('show'); return;
+            }
+            if (state.privacyMode && state.surname) {
+                var notes = document.getElementById('f-notes');
+                if (!notes.value.includes(state.surname + '様')) notes.value = state.surname + '様' + (notes.value.trim() ? '\n' + notes.value.trim() : '');
+            }
+            var btn = document.getElementById('submit-btn');
+            btn.disabled = true; btn.textContent = '📤 送信中...';
 
             callGasApi({
                 action: 'submit', driveFileId: state.driveFileId, imageBase64: state.driveFileId ? null : state.base64, imageMime: state.mime,
@@ -507,7 +607,7 @@
             if (it.valuable === 'yes') return true;
             if (it.valuable === 'no') return false;
             var name = String(it.item || '');
-            return cashAmount(it) >= 1000 || /(スマホ|スマートフォン|携帯電話|iPhone|財布|小銭入れ|運転免許証|免許証|マイナンバーカード|クレジットカード|キャッシュカード)/i.test(name) || highValue(it);
+            return cashAmount(it) >= 1000 || /(スマホ|スマートフォン|携帯電話|iPhone|財布|小銭入れ|運転免許証|免許証|マイナンバーカード|クレジットカード|キャッシュカード|健康保険証|保険証|社員証|学生証|身分証|パスポート|在留カード)/i.test(name) || highValue(it);
         }
         function needsPolicePriority(it) {
             var status = String(it.status || '');
