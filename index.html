@@ -467,18 +467,21 @@
 
         function cashAmount(it) {
             var name = String(it.item || '');
-            if (!/(現金|硬貨|紙幣|お金|お札|\d+円札|[一二三五千万円]+円札)/.test(name)) return 0;
-            var text = (name + ' ' + (it.notes || '')).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-            var normalized = text.replace(/(\d+)\s*万\s*(?:(\d+)\s*千\s*)?円/g, (_, man, sen) => (Number(man)*10000 + Number(sen || 0)*1000) + '円')
-                .replace(/(\d+)\s*千\s*円/g, (_, sen) => Number(sen)*1000 + '円');
-            var statedTotal = normalized.match(/(?:合計|総額|計)\s*([\d,，]+)\s*円/);
-            var parts = normalized.replace(/(?:合計|総額|計)\s*[\d,，]+\s*円/g, '');
-            var denominations = Array.from(parts.matchAll(/([\d,，]+|一万|壱万|五千|千)\s*円(?:札|玉)?\s*(?:(\d+)\s*枚)?/g), m => {
-                var amount = ({ '一万': 10000, '壱万': 10000, '五千': 5000, '千': 1000 })[m[1]] || Number(m[1].replace(/[,，]/g, ''));
-                return amount * Number(m[2] || 1);
-            });
-            return Math.max(statedTotal ? Number(statedTotal[1].replace(/[,，]/g, '')) : 0,
-                denominations.reduce((sum, amount) => sum + amount, 0));
+            if (!/(現金|硬貨|紙幣|日本銀行券|お金|お札|\d+円札|[一二三五千万円]+円札|^[\d,，]+\s*円(?:札|玉)?$)/.test(name)) return 0;
+            function amountOf(value) {
+                var normalized = String(value).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+                    .replace(/(\d+)\s*万\s*(?:(\d+)\s*千\s*)?円/g, (_, man, sen) => (Number(man)*10000 + Number(sen || 0)*1000) + '円')
+                    .replace(/(\d+)\s*千\s*円/g, (_, sen) => Number(sen)*1000 + '円');
+                var statedTotal = normalized.match(/(?:合計|総額|計)\s*([\d,，]+)\s*円/);
+                var parts = normalized.replace(/(?:合計|総額|計)\s*[\d,，]+\s*円/g, '');
+                var denominations = Array.from(parts.matchAll(/([\d,，]+|一万|壱万|五千|千)\s*円(?:札|玉)?\s*(?:(\d+)\s*枚)?/g), m => {
+                    var amount = ({ '一万': 10000, '壱万': 10000, '五千': 5000, '千': 1000 })[m[1]] || Number(m[1].replace(/[,，]/g, ''));
+                    return amount * Number(m[2] || 1);
+                });
+                return Math.max(statedTotal ? Number(statedTotal[1].replace(/[,，]/g, '')) : 0,
+                    denominations.reduce((sum, amount) => sum + amount, 0));
+            }
+            return Math.max(amountOf(name), amountOf(it.notes || ''));
         }
         function highValue(it) {
             var manual = manualEntry(it);
@@ -497,7 +500,7 @@
             if (it.valuable === 'yes') return true;
             if (it.valuable === 'no') return false;
             var name = String(it.item || '');
-            return cashAmount(it) >= 1000 || /(スマホ|スマートフォン|携帯電話|iPhone|財布|運転免許証|免許証|マイナンバーカード|クレジットカード|キャッシュカード)/i.test(name) || highValue(it);
+            return cashAmount(it) >= 1000 || /(スマホ|スマートフォン|携帯電話|iPhone|財布|小銭入れ|運転免許証|免許証|マイナンバーカード|クレジットカード|キャッシュカード)/i.test(name) || highValue(it);
         }
         function needsPolicePriority(it) {
             var status = String(it.status || '');
