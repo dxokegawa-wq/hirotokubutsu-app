@@ -487,7 +487,9 @@
             var manual = manualEntry(it);
             if (typeof manual.highValue === 'boolean') return manual.highValue;
             if (it.highValue === true || it.highValue === 'TRUE') return true;
-            var text = String(it.item || '') + ' ' + String(it.notes || '');
+            var text = (String(it.item || '') + ' ' + String(it.notes || ''))
+                .replace(/(?:[1-9]\d*|[一二三四五六七八九])\s*万円(?:を)?上限/g, '')
+                .replace(/[\d,，]+\s*円(?:を)?上限/g, '');
             if (/(ロレックス|高級腕時計|ダイヤモンド|プラチナ|金製|MacBook|ノートパソコン|一眼レフ)/i.test(text)) return true;
             if (/(?:[1-9]\d*|[一二三四五六七八九])\s*万\s*(?:(?:\d+|[一二三四五六七八九])\s*千\s*)?(?:[\d,，]+\s*)?円/.test(text)) return true;
             if (Array.from(text.matchAll(/([\d,，]+)\s*円/g)).some(m => Number(m[1].replace(/[,，]/g, '')) >= 10000)) return true;
