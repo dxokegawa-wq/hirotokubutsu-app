@@ -563,16 +563,25 @@
         }
 
         function setListFilter(p) {
-            statusFilter = 'all'; 
+            statusFilter = 'all';
             updateStatusBtnUI();
-            showList(p);
+            activePeriod = p;
+            if (!allListItems.length) { showList(p); return; }
+            updatePeriodBtnUI(); renderList();
         }
 
         function setStatusFilter(s) {
             statusFilter = (statusFilter === s) ? 'all' : s;
             updateStatusBtnUI();
             if (statusFilter !== 'all') activePeriod = 'all';
-            showList(activePeriod);
+            if (!allListItems.length) { showList(activePeriod); return; }
+            updatePeriodBtnUI(); renderList();
+        }
+
+        function updatePeriodBtnUI() {
+            ['month','prev','all'].forEach(p => {
+                document.getElementById('lf-' + p).classList.toggle('active', p === activePeriod);
+            });
         }
         
         function updateStatusBtnUI() {
