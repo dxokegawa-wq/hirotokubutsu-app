@@ -467,9 +467,14 @@
 
         function cashAmount(it) {
             var name = String(it.item || '');
-            if (!/(現金|硬貨|紙幣|日本銀行券|お金|お札|\d+円札|[一二三五千万円]+円札|^[\d,，]+\s*円(?:札|玉)?$)/.test(name)) return 0;
+            var notes = String(it.notes || '');
+            var cashItem = /(現金|硬貨|紙幣|日本銀行券|お金|お札|\d+円札|[一二三五千万円]+円札|^[\d０-９,，]+\s*(?:万\s*\d*\s*千?|千)?\s*円(?:札|玉)?$)/.test(name);
+            var walletWithCash = /(財布|小銭入れ)/.test(name) && !/(定価|価格|相場|査定|購入額|販売価格|円相当|円分)/.test(notes);
+            if (!cashItem && !walletWithCash) return 0;
             function amountOf(value) {
                 var normalized = String(value).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+                    .replace(/([一二三四五六七八九壱])\s*万\s*(?:([一二三四五六七八九])\s*千\s*)?円/g, (_, man, sen) => (({一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,壱:1})[man]*10000 + (({一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9})[sen] || 0)*1000) + '円')
+                    .replace(/([一二三四五六七八九])\s*千\s*円/g, (_, sen) => ({一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9})[sen]*1000 + '円')
                     .replace(/(\d+)\s*万\s*(?:(\d+)\s*千\s*)?円/g, (_, man, sen) => (Number(man)*10000 + Number(sen || 0)*1000) + '円')
                     .replace(/(\d+)\s*千\s*円/g, (_, sen) => Number(sen)*1000 + '円');
                 var statedTotal = normalized.match(/(?:合計|総額|計)\s*([\d,，]+)\s*円/);
@@ -481,7 +486,7 @@
                 return Math.max(statedTotal ? Number(statedTotal[1].replace(/[,，]/g, '')) : 0,
                     denominations.reduce((sum, amount) => sum + amount, 0));
             }
-            return Math.max(amountOf(name), amountOf(it.notes || ''));
+            return Math.max(amountOf(name), amountOf(notes));
         }
         function highValue(it) {
             var manual = manualEntry(it);
@@ -517,19 +522,23 @@
             return date;
         }
         function policeAlerts(items) {
-            var today = new Date(); today.setHours(12,0,0,0);
+            var now = new Date();
             return items.filter(needsPolicePriority).map(function(it) {
                 var date = foundDate(it);
                 if (!date || isNaN(date)) return null;
-                var days = Math.round((date.getTime() + 7*86400000 - today.getTime()) / 86400000);
+                var deadline = new Date(date);
+                deadline.setDate(deadline.getDate() + 6);
+                deadline.setHours(16, 0, 0, 0);
+                var days = Math.round((Date.UTC(deadline.getFullYear(), deadline.getMonth(), deadline.getDate()) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+                if (days === 0 && now >= deadline) days = -1;
                 return Object.assign({}, it, { daysLeft: days });
             }).filter(Boolean).sort((a,b) => a.daysLeft-b.daysLeft);
         }
         function alertHtml(items) {
             if (!items.length) return '';
             var urgent = items.filter(it => it.daysLeft <= 2);
-            var details = items.slice(0, 4).map(it => escHtml(it.item || '品名なし') + '（' + (it.daysLeft < 0 ? '期限超過' : it.daysLeft === 0 ? '今日が目安' : 'あと' + it.daysLeft + '日') + '）').join('、');
-            return '<div class="police-alert" role="status"><strong>🚓 警察届の優先確認 ' + items.length + '件' + (urgent.length ? '・期限間近/超過 ' + urgent.length + '件' : '') + '</strong>' + details + (items.length > 4 ? ' ほか' : '') + '<br><small>拾得日から7日を目安に確認。年のない過去記録は推定です。これは指定条件の優先通知で、その他の落とし物の届出要否を免除しません。</small></div>';
+            var details = items.slice(0, 4).map(it => escHtml(it.item || '品名なし') + '（' + (it.daysLeft < 0 ? '期限超過' : it.daysLeft === 0 ? '今日16時まで' : 'あと' + it.daysLeft + '日') + '）').join('、');
+            return '<div class="police-alert" role="status"><strong>🚓 警察届の優先確認 ' + items.length + '件' + (urgent.length ? '・期限間近/超過 ' + urgent.length + '件' : '') + '</strong>' + details + (items.length > 4 ? ' ほか' : '') + '<br><small>店内目安：拾得日から6日以内、窓口16時まで。年のない過去記録は推定です。これは指定条件の優先通知で、その他の落とし物の届出要否を免除しません。</small></div>';
         }
         function refreshHomeAlerts() {
             document.getElementById('home-police-alert').textContent = '警察届の優先対象を確認中…';
@@ -590,22 +599,6 @@
             });
         }
 
-        function extractCashAmount(itemStr, notesStr) {
-            var combined = (itemStr + " " + notesStr).toLowerCase();
-            if (combined.includes("ic") || combined.includes("suica") || combined.includes("pasmo") || 
-                combined.includes("nanaco") || combined.includes("waon") || combined.includes("edy")) {
-                return 0;
-            }
-            var regex = /([0-9０-９,，]+)\s*円/g;
-            var match; var total = 0;
-            while ((match = regex.exec(combined)) !== null) {
-                var numStr = match[1].replace(/[０-９]/g, function(s) { return String.fromCharCode(s.charCodeAt(0) - 0xFEE0); }).replace(/[,，]/g, ''); 
-                var val = parseInt(numStr, 10);
-                if (!isNaN(val)) total += val;
-            }
-            return total;
-        }
-
         function toggleBulkDeleteBtn() {
             var checkboxes = document.querySelectorAll('.delete-checkbox:checked');
             var btn = document.getElementById('bulk-delete-btn');
@@ -655,7 +648,7 @@
             document.getElementById('list-police-alert').innerHTML = alertHtml(policeAlerts(allListItems));
 
             var totalCash = 0;
-            items.forEach(function(it) { totalCash += extractCashAmount(it.item || '', it.notes || ''); });
+            items.forEach(function(it) { totalCash += cashAmount(it); });
 
             var total    = items.length;
             var keeping  = items.filter(function(it) { return !it.status || (!it.status.includes('返却') && !it.status.includes('警察')); }).length;
@@ -670,7 +663,7 @@
                 '<span><span class="stat-dot" style="background:#60a5fa"></span>警察済 ' + policed + '件</span>' +
                 '</div>' +
                 '<div style="width:100%; padding: 10px; background: rgba(10, 15, 30, 0.95); border: 1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center; border-radius: 8px; margin-bottom: 10px;">' +
-                '<span style="color:#34d399; font-weight:bold; font-size:13px;">💰 現金合計：' + totalCash.toLocaleString() + ' 円</span>' +
+                '<span style="color:#34d399; font-weight:bold; font-size:13px;" title="表示中の品名・備考から推定。金額不明の現金は含みません。">💰 現金合計（推定）：' + totalCash.toLocaleString() + ' 円</span>' +
                 '<button id="bulk-delete-btn" class="ret-btn" style="background:#ef4444; color:white; border:none; display:none; margin:0;" onclick="confirmBulkDelete()"></button>' +
                 '</div>' +
                 (activePeriod === 'all' && (statusFilter === 'all' || statusFilter === 'ret') ? '<button class="bulk-old-btn" onclick="confirmOldDelete()">🗑 先々月以前の' + (statusFilter === 'ret' ? '返却済み' : '全件') + 'を確認して一括削除</button>' : '');
