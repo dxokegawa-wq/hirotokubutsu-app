@@ -146,6 +146,8 @@
         
         .list-state { text-align: center; padding: 64px 20px; color: #334155; font-size: 15px; }
         .list-spinner { width: 44px; height: 44px; border: 3px solid rgba(59, 130, 246, 0.1); border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.9s linear infinite; margin: 0 auto 16px; }
+        .history-load { max-width: 360px; margin: 20px auto 0; padding: 0 20px; text-align: center; color: #94a3b8; line-height: 1.7; }
+        .history-load .btn { margin-top: 18px; }
         
         #camera-input { position: absolute; width: 0; height: 0; opacity: 0; }
         
@@ -158,6 +160,8 @@
         .delete-checkbox { width: 18px; height: 18px; cursor: pointer; accent-color: #ef4444; }
         .police-alert { margin: 12px 16px; padding: 14px; border-radius: 14px; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.35); color: #fecaca; font-size: 13px; line-height: 1.6; text-align: left; }
         .police-alert strong { display: block; color: #fff; }
+        .police-scope { margin: 8px 16px 12px; color: #94a3b8; font-size: 11px; line-height: 1.6; text-align: left; }
+        .police-scope .ret-btn { font-size: 11px; margin-top: 6px; }
         .valuable-badge { color: #fbbf24; font-size: 11px; white-space: nowrap; }
         .valuable-toggle { margin-top: 4px; border-color: rgba(251,191,36,.35); color: #fbbf24; background: rgba(251,191,36,.08); }
         .bulk-old-btn { border: 1px solid rgba(239,68,68,.4); background: rgba(239,68,68,.1); color: #fca5a5; border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
@@ -307,7 +311,7 @@
         <div class="app-header">
             <button class="back-btn" onclick="showScreen('home')">←</button>
             <h1>拾得物一覧</h1>
-            <button class="list-filter-btn" style="margin-left:auto" onclick="showList(activePeriod, true)">↻ 更新</button>
+            <button class="list-filter-btn" style="margin-left:auto" onclick="refreshList()">↻ 更新</button>
         </div>
         
         <div class="list-filter-bar">
@@ -603,6 +607,10 @@
             });
         }
 
+        var monthListItems = [];
+        var monthListLoadedAt = 0;
+        var monthListRequest = null;
+        var monthFetchSerial = 0;
         var allListItems = [];
         var visibleListItems = [];
         var allListLoadedAt = 0;
@@ -611,16 +619,39 @@
         var activePeriod = 'month';
         var statusFilter = 'all';
         var manualEntriesCache = null;
-        function invalidateListCache() { allListLoadedAt = 0; allListRequest = null; listFetchSerial++; }
+        function invalidateListCache() {
+            monthListLoadedAt = 0; monthListRequest = null; monthFetchSerial++;
+            allListLoadedAt = 0; allListRequest = null; listFetchSerial++;
+        }
+        function fetchMonthList(force) {
+            if (!force && monthListRequest) return monthListRequest;
+            if (!force && monthListLoadedAt && Date.now() - monthListLoadedAt < 30000) return Promise.resolve(monthListItems);
+            var serial = ++monthFetchSerial;
+            var request = callGasApi({ action: 'list', period: 'month' }).then(function(result) {
+                if (!result.success || !result.items) throw new Error(result.error || '今月分の取得に失敗しました');
+                if (serial === monthFetchSerial) {
+                    monthListItems = result.items;
+                    monthListLoadedAt = Date.now();
+                }
+                return result.items;
+            });
+            monthListRequest = request;
+            return request.finally(function() { if (monthListRequest === request) monthListRequest = null; });
+        }
         function fetchAllList(force) {
             if (!force && allListRequest) return allListRequest;
-            if (!force && allListLoadedAt && Date.now() - allListLoadedAt < 30000) return Promise.resolve(allListItems);
+            if (!force && allListLoadedAt) return Promise.resolve(allListItems);
             var serial = ++listFetchSerial;
             var request = callGasApi({ action: 'list', period: 'all' }).then(function(result) {
                 if (!result.success || !result.items) throw new Error(result.error || 'データ取得に失敗しました');
                 if (serial === listFetchSerial) {
                     allListItems = result.items;
                     allListLoadedAt = Date.now();
+                    if (monthListLoadedAt < allListLoadedAt) {
+                        var thisMonth = (new Date().getMonth() + 1) + '月';
+                        monthListItems = result.items.filter(function(it) { return it.sheetName === thisMonth; });
+                        monthListLoadedAt = allListLoadedAt;
+                    }
                 }
                 return result.items;
             });
@@ -710,9 +741,12 @@
         }
         function policeAlerts(items) {
             var now = new Date();
+            var today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+            var oldest = new Date(today);
+            oldest.setDate(oldest.getDate() - 13);
             return items.filter(needsPolicePriority).map(function(it) {
                 var date = foundDate(it);
-                if (!date || isNaN(date)) return null;
+                if (!date || isNaN(date) || date < oldest || date > today) return null;
                 var deadline = new Date(date);
                 deadline.setDate(deadline.getDate() + 6);
                 deadline.setHours(16, 0, 0, 0);
@@ -727,30 +761,94 @@
             var details = items.slice(0, 4).map(it => escHtml(it.item || '品名なし') + '（' + (it.daysLeft < 0 ? '期限超過' : it.daysLeft === 0 ? '今日16時まで' : 'あと' + it.daysLeft + '日') + '）').join('、');
             return '<div class="police-alert" role="status"><strong>🚓 警察届の優先確認 ' + items.length + '件' + (urgent.length ? '・期限間近/超過 ' + urgent.length + '件' : '') + '</strong>' + details + (items.length > 4 ? ' ほか' : '') + '<br><small>店内目安：拾得日から6日以内、窓口16時まで。年のない過去記録は推定です。これは指定条件の優先通知で、その他の落とし物の届出要否を免除しません。</small></div>';
         }
+        function policeSourceItems() {
+            if (!historyCheckedToday()) return monthListItems;
+            if (!monthListLoadedAt || monthListLoadedAt <= allListLoadedAt) return allListItems;
+            var thisMonth = (new Date().getMonth() + 1) + '月';
+            return allListItems.filter(function(it) { return it.sheetName !== thisMonth; }).concat(monthListItems);
+        }
+        function historyCheckedToday() {
+            if (!allListLoadedAt) return false;
+            var last = new Date(allListLoadedAt), today = new Date();
+            return last.getFullYear() === today.getFullYear() && last.getMonth() === today.getMonth() && last.getDate() === today.getDate();
+        }
+        function policeNoticeHtml() {
+            var notice = alertHtml(policeAlerts(policeSourceItems()));
+            notice += '<div class="police-scope">通知は拾得日が直近14日間の記録だけを対象にしています。14日より古い未届の物は表示しません。年のない記録は推定で、一覧の取得上限により全件表示を保証しません。';
+            if (!historyCheckedToday() && new Date().getDate() <= 13) {
+                notice += '<br>⚠️ 前月分は未確認です。月をまたぐ14日間を確認するには過去分を読み込んでください。' +
+                    '<br><button class="ret-btn" onclick="loadPoliceHistory()">前月分を含めて確認</button>';
+            }
+            return notice + '</div>';
+        }
+        function renderPoliceNotice(id) {
+            var target = document.getElementById(id);
+            if (!monthListLoadedAt && !historyCheckedToday()) { target.textContent = '警察届の優先対象を確認中…'; return; }
+            target.innerHTML = policeNoticeHtml();
+        }
         function refreshHomeAlerts() {
-            document.getElementById('home-police-alert').textContent = '警察届の優先対象を確認中…';
-            fetchAllList(false).then(items => {
-                document.getElementById('home-police-alert').innerHTML = alertHtml(policeAlerts(items));
-            }).catch(() => { document.getElementById('home-police-alert').textContent = '⚠️ 警察届の優先対象を取得できません。台帳を直接確認してください。'; });
+            renderPoliceNotice('home-police-alert');
+            fetchMonthList(false).then(function() {
+                renderPoliceNotice('home-police-alert');
+                if (document.getElementById('screen-list').classList.contains('active')) renderPoliceNotice('list-police-alert');
+            }).catch(function() {
+                if (!historyCheckedToday() && !monthListLoadedAt) document.getElementById('home-police-alert').textContent = '⚠️ 警察届の優先対象を取得できません。台帳を直接確認してください。';
+            });
+        }
+        function loadPoliceHistory() {
+            document.getElementById('home-police-alert').textContent = '過去分を読み込み中…';
+            if (document.getElementById('screen-list').classList.contains('active')) document.getElementById('list-police-alert').textContent = '過去分を読み込み中…';
+            fetchAllList(!historyCheckedToday()).then(function() {
+                renderPoliceNotice('home-police-alert');
+                if (document.getElementById('screen-list').classList.contains('active')) renderList();
+            }).catch(function() {
+                document.getElementById('home-police-alert').textContent = '⚠️ 過去分を取得できませんでした。台帳を直接確認してください。';
+                if (document.getElementById('screen-list').classList.contains('active')) renderPoliceNotice('list-police-alert');
+            });
         }
 
+        function isMonthOnlyView() { return activePeriod === 'month' && statusFilter === 'all'; }
+        function showListLoading() {
+            document.getElementById('list-state-area').innerHTML = '<div class="list-state"><div class="list-spinner"></div>読み込み中...</div>';
+            document.getElementById('list-table-wrap').style.display = 'none';
+            document.getElementById('list-stats').innerHTML = '';
+        }
+        function showHistoryPrompt() {
+            renderPoliceNotice('list-police-alert');
+            document.getElementById('list-table-wrap').style.display = 'none';
+            document.getElementById('list-stats').innerHTML = '';
+            document.getElementById('list-state-area').innerHTML = '<div class="history-load">先月・全て・貴重品・返却済み・警察届済みの一覧は、最初は読み込みません。' +
+                '<button class="btn btn-primary" onclick="loadHistory()">📋 過去分を読み込む</button></div>';
+        }
+        function loadHistory(forceRefresh) {
+            showListLoading();
+            renderPoliceNotice('list-police-alert');
+            fetchAllList(!!forceRefresh).then(function() {
+                renderPoliceNotice('home-police-alert');
+                if (document.getElementById('screen-list').classList.contains('active')) renderList();
+            }).catch(function(err) {
+                if (allListLoadedAt) { showToast('⚠️ 更新できませんでした。前回取得分を表示します'); renderList(); }
+                else document.getElementById('list-state-area').innerHTML = '<div class="list-state">❌ ' + escHtml(err.message) + '<br><br><button class="ret-btn" onclick="loadHistory()">再試行</button></div>';
+            });
+        }
+        function refreshList() { showList(activePeriod, true); }
         function showList(period, forceRefresh) {
             activePeriod = period || activePeriod;
             showScreen('list');
             updatePeriodBtnUI();
             updateStatusBtnUI();
-            if (allListLoadedAt) {
-                renderList();
-            } else {
-                document.getElementById('list-state-area').innerHTML = '<div class="list-state"><div class="list-spinner"></div>読み込み中...</div>';
-                document.getElementById('list-table-wrap').style.display = 'none';
-                document.getElementById('list-stats').innerHTML = '';
-                document.getElementById('list-police-alert').textContent = '';
+            if (!isMonthOnlyView()) {
+                if (forceRefresh) loadHistory(true);
+                else if (allListLoadedAt) renderList();
+                else showHistoryPrompt();
+                return;
             }
-            fetchAllList(!!forceRefresh).then(function () {
-                if (document.getElementById('screen-list').classList.contains('active')) renderList();
-            }).catch(function (err) {
-                if (allListLoadedAt) showToast('⚠️ 更新できませんでした。表示中のデータは前回取得分です');
+            if (monthListLoadedAt) renderList();
+            else { showListLoading(); renderPoliceNotice('list-police-alert'); }
+            fetchMonthList(!!forceRefresh).then(function() {
+                if (document.getElementById('screen-list').classList.contains('active') && isMonthOnlyView()) renderList();
+            }).catch(function(err) {
+                if (monthListLoadedAt) showToast('⚠️ 更新できませんでした。前回取得分を表示します');
                 else document.getElementById('list-state-area').innerHTML = '<div class="list-state">❌ ' + escHtml(err.message) + '</div>';
             });
         }
@@ -759,16 +857,24 @@
             statusFilter = 'all';
             updateStatusBtnUI();
             activePeriod = p;
-            if (!allListLoadedAt) { showList(p); return; }
-            updatePeriodBtnUI(); renderList();
+            updatePeriodBtnUI();
+            if (isMonthOnlyView()) {
+                if (monthListLoadedAt) renderList();
+                else showList('month');
+            } else if (allListLoadedAt) renderList();
+            else showHistoryPrompt();
         }
 
         function setStatusFilter(s) {
             statusFilter = (statusFilter === s) ? 'all' : s;
             updateStatusBtnUI();
             if (statusFilter !== 'all') activePeriod = 'all';
-            if (!allListLoadedAt) { showList(activePeriod); return; }
-            updatePeriodBtnUI(); renderList();
+            updatePeriodBtnUI();
+            if (isMonthOnlyView()) {
+                if (monthListLoadedAt) renderList();
+                else showList('month');
+            } else if (allListLoadedAt) renderList();
+            else showHistoryPrompt();
         }
 
         function updatePeriodBtnUI() {
@@ -811,14 +917,15 @@
             var btn = document.getElementById('bulk-delete-btn');
             btn.disabled = true; btn.innerHTML = '削除中...';
             callGasApi({ action: 'bulkDelete', targets: targets }).then(function(res) {
-                if (res.success) { invalidateListCache(); showToast('✅ 一括削除が完了しました'); showList(); }
+                if (res.success) { invalidateListCache(); showToast('✅ 一括削除が完了しました'); showList(activePeriod, true); }
                 else { showToast('❌ エラー: ' + res.error); }
             }).catch(function(err) { showToast('❌ 通信エラー: ' + err.message); })
             .finally(function() { btn.disabled = false; btn.style.display = 'none'; });
         }
 
         function renderList() {
-            var items = allListItems.filter(function(it) {
+            var source = isMonthOnlyView() && monthListLoadedAt ? monthListItems : allListItems;
+            var items = source.filter(function(it) {
                 if (activePeriod === 'month' && it.sheetName !== (new Date().getMonth()+1) + '月') return false;
                 if (activePeriod === 'prev') {
                     var prev = new Date(); prev.setMonth(prev.getMonth()-1);
@@ -830,7 +937,7 @@
                 return true;
             });
             visibleListItems = items;
-            document.getElementById('list-police-alert').innerHTML = alertHtml(policeAlerts(allListItems));
+            renderPoliceNotice('list-police-alert');
 
             var totalCash = 0;
             items.forEach(function(it) { totalCash += cashAmount(it); });
@@ -917,13 +1024,13 @@
         document.addEventListener('keydown', function(event) { if (event.key === 'Escape') closePhoto(); });
 
         function toggleValuable(row, sheetName, value) {
-            var it = allListItems.find(x => x.row === row && x.sheetName === sheetName);
+            var it = visibleListItems.find(x => x.row === row && x.sheetName === sheetName);
             if (!it) return;
             saveManualEntry(it, { valuable: value });
             renderList(); showToast('✅ この端末の貴重品指定を更新しました');
         }
         function toggleHighValue(row, sheetName, value) {
-            var it = allListItems.find(x => x.row === row && x.sheetName === sheetName);
+            var it = visibleListItems.find(x => x.row === row && x.sheetName === sheetName);
             if (!it) return;
             saveManualEntry(it, { highValue: value });
             renderList(); showToast('✅ この端末の高額品指定を更新しました');
@@ -957,7 +1064,7 @@
                     return callGasApi({ action: 'bulkDelete', targets: current.map(it => ({ sheetName: it.sheetName, row: it.row })) });
                 }).then(function(res) {
                     if (!res.success) throw new Error(res.error || '削除失敗');
-                    invalidateListCache(); showToast('✅ ' + targets.length + '件を削除しました'); showList('all');
+                    invalidateListCache(); showToast('✅ ' + targets.length + '件を削除しました'); showList('all', true);
                 }).catch(function(err) { showToast('❌ ' + err.message); });
             }).catch(function(err) { showToast('❌ ' + err.message); });
         }
@@ -983,7 +1090,7 @@
             closeProcessModal();
             callGasApi({ action: 'updateStatus', row: _processRow, sheetName: _processSheet, status: newStatus, returnDate: returnDate })
             .then(function(result) {
-                if (result.success) { invalidateListCache(); showToast('✅ 状態を更新しました'); showList(); }
+                if (result.success) { invalidateListCache(); showToast('✅ 状態を更新しました'); showList(activePeriod, true); }
                 else { showToast('❌ エラー: ' + (result.error || '更新失敗')); }
             }).catch(function(err) { showToast('❌ 通信エラー: ' + err.message); });
         }
@@ -993,7 +1100,7 @@
             
             callGasApi({ action: 'updateStatus', row: row, sheetName: sheetName, status: '完了 ✅' })
             .then(function(result) {
-                if (result.success) { invalidateListCache(); showToast('✅ 未処理に戻しました'); showList(); }
+                if (result.success) { invalidateListCache(); showToast('✅ 未処理に戻しました'); showList(activePeriod, true); }
                 else { showToast('❌ エラー: ' + (result.error || '更新失敗')); }
             }).catch(function(err) { showToast('❌ 通信エラー: ' + err.message); });
         }
