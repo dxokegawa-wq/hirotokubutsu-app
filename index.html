@@ -994,7 +994,7 @@
                     '<td><span class="status-badge ' + statusClass + '">' + escHtml(it.status || '---') + '</span></td>' +
                     '<td class="td-notes">' + escHtml(it.notes || '---') + '</td>' +
                     '<td>' + actionBtn + '<br><button class="ret-btn valuable-toggle" onclick="toggleValuable(' + it.row + ',\'' + escHtml(it.sheetName) + '\',' + (!isValuable(it)) + ')">' + (isValuable(it) ? '💎 解除' : '💎 貴重品へ') + '</button>' +
-                    '<br><button class="ret-btn valuable-toggle" onclick="toggleHighValue(' + it.row + ',\'' + escHtml(it.sheetName) + '\',' + (!highValue(it)) + ')">' + (highValue(it) ? '🚓 高額解除' : '🚓 高額品指定') + '</button></td>' +
+                    '<br><button class="ret-btn valuable-toggle" onclick="toggleHighValue(' + it.row + ',\'' + escHtml(it.sheetName) + '\',' + (!highValue(it)) + ')">' + (highValue(it) ? '🚓 警察届指定を解除' : '🚓 警察届指定') + '</button></td>' +
                     '</tr>';
             }).join('');
         }
@@ -1033,7 +1033,7 @@
             var it = visibleListItems.find(x => x.row === row && x.sheetName === sheetName);
             if (!it) return;
             saveManualEntry(it, { highValue: value });
-            renderList(); showToast('✅ この端末の高額品指定を更新しました');
+            renderList(); showToast('✅ この端末の警察届指定を更新しました');
         }
         function oldCandidates(items, mode) {
             var thisMonth = new Date().getMonth()+1;
